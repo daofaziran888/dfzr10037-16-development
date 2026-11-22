@@ -60,6 +60,15 @@
             >
               {{ action }}
             </button>
+            <button
+              v-if="meta.key === 'quality_audit'"
+              class="link"
+              type="button"
+              :data-testid="`evidence-focus-${row.id}`"
+              @click="evidenceReportId = Number(row.id)"
+            >
+              取证
+            </button>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -90,11 +99,16 @@
       <span>共 {{ total }} 条{{ meta.name }}记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <EvidencePanel
+      v-if="meta.key === 'quality_audit' && evidenceReportId > 0"
+      :report-id="evidenceReportId"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import {
   createEntry,
@@ -104,6 +118,7 @@ import {
   runAction as applyAction,
 } from '@/api/backend-service'
 import type { EntryRow } from '@/data/types'
+import EvidencePanel from '@/views/EvidencePanel.vue'
 
 const props = defineProps<{ moduleKey: string }>()
 const meta = moduleMeta(props.moduleKey)
@@ -115,6 +130,18 @@ const filterFields = meta.fields.slice(0, 3)
 const showCreate = ref(false)
 const creating = ref(false)
 const createValues = ref<Record<string, string>>({})
+// 取证面板跟随当前选中报告：默认取列表第一条，操作后保持同一报告。
+const evidenceReportId = ref(0)
+watch(
+  rows,
+  (next) => {
+    const ids = next.map((row) => Number(row.id))
+    if (!ids.includes(evidenceReportId.value)) {
+      evidenceReportId.value = ids[0] ?? 0
+    }
+  },
+  { immediate: true },
+)
 const stats = computed(() => [
   { label: meta.metrics[0], value: total.value },
   { label: meta.metrics[1], value: rows.value.filter((row) => row.status === meta.statuses[1]).length },

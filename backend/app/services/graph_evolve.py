@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app import evidence, graph_versions
 from app.services.base import BaseModuleService
 from app.store import store
 
@@ -30,7 +31,25 @@ class GraphEvolveService(BaseModuleService):
         if entry.get("status") in ("已评审", "已确认"):
             compare_msg = self._push_to_graph_compare(entry)
             message += "；" + compare_msg
+        # 链路 L18: graph_evolve → 审计证据回放（回滚会把取样图代置为不可读）
+        if action == "执行回滚":
+            message += "；" + self._mark_generation_rolled_back(entry)
         return entry, message
+
+    def _mark_generation_rolled_back(self, entry: dict[str, Any]) -> str:
+        generation = str(entry.get("版本标签", "")).strip()
+        if not generation:
+            return "演化记录未填写版本标签，未变更任何图代"
+        generation = generation.split("/")[-1] if "/" in generation else generation
+        rolled = graph_versions.mark_rolled_back(generation, entry)
+        if rolled is None:
+            return f"图代 {generation} 未登记，未变更任何图代"
+        affected = evidence.apply_rollback(generation, entry)
+        rolled_to = (rolled.get("rollback") or {}).get("rollback_version") or entry.get("回滚版本", "")
+        base = f"图代 {generation} 已置为不可回放（回滚到 {rolled_to or '未登记版本'}）"
+        if affected:
+            base += f"；复核记录 {'、'.join(affected)} 已标记需重新取样"
+        return base
 
     def _push_to_quality_audit(self, entry: dict[str, Any]) -> str:
         rows = store.rows("quality_audit")
@@ -74,5 +93,5 @@ class GraphEvolveService(BaseModuleService):
 
     def domain_snapshot(self) -> dict[str, Any]:
         base = super().domain_snapshot()
-        base["cross_module_consumers"] = ["quality_audit", "graph_compare"]
+        base["cross_module_consumers"] = ["quality_audit", "graph_compare", "evidence_replay"]
         return base

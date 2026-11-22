@@ -73,6 +73,42 @@ npm run dev
 | 定时任务 | `schedule_job` | 调度作业 | 作业编号、任务类型、关联图谱 |
 | 治理看板 | `govern_dash` | 治理指标 | 指标编号、指标名称、评估对象 |
 
+## 审计证据回放
+
+质量审计的报告登记行之外，新增可打包、可下载、可回放的审计证据文件，
+入口在「质量审计」工作台底部（也可用接口直接操作）。
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/evidence/generations` | 可取样图代与节点/边规模，含回滚状态 |
+| `GET /api/evidence/generations/{g}` | 图代明细（节点、关系、内容摘要） |
+| `POST /api/evidence/packages` | 从取样图代 + 关系编号封存原包 / 补发勘误 |
+| `GET /api/evidence/{no}/file` | 下载证据文件（含节点、关系、复核记录与回放策略） |
+| `GET /api/evidence/{no}/replay` | 重放，返回「立即重放到哪一代」 |
+| `POST /api/evidence/verify-file` | 重新打开已下载文件时校验图代是否仍可回放 |
+| `GET /api/evidence/reviews` | 复核记录与图谱演化待办 |
+| `POST /api/evidence/reviews/{no}/close` | 复核结案（证据不可回放或线索不足时拒绝） |
+| `GET /api/evidence/clues/{report_id}` | 线索充分性与下一步动作 |
+| `GET /api/evidence/rollback-impact/{g}?edges=...` | 回溯回滚目标图代的节点/边，判断是否影响样本 |
+
+约束：
+
+- 证据包必须绑定一个可读取的取样图代与至少一条关系明细，不打包「当前图」。
+- 原包与补发勘误分开编号，勘误用 `supersedes` 指向原包；同一请求编号重试
+  只返回原包，不会把勘误混进来。
+- 图代被「图谱演化 · 执行回滚」置为不可读后，引用它的证据一律拒绝回放，
+  即使别的图代存在同名关系记录也不允许顶替（`substitution_allowed` 恒为 false）。
+- 封包同时写入复核记录与图谱演化待办，记录取样节点/边、回滚目标与影响判断。
+- 只有一条错连线索时原案可立即追查；补报第二条关系后线索才足够发起复核。
+
+示例（服务启动后）：
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/api/evidence/packages \
+  -H 'Content-Type: application/json' \
+  -d '{"report_id":2,"generation":"g5","edge_ids":["e-g5-01"],"request_token":"manual-1"}'
+```
+
 ## 约定
 
 - 全部模块共享`frontend/src/views/WorkbenchView.vue|tsx`和一套资源路由。
